@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Target</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --fg: #1a1a1a; --muted: #6b6b6b; --line: #d6d6d2;
+    --tile: #ffffff; --tile-line: #b8b8b4;
+    --correct: #3f8f5a; --present: #d4a11e; --absent: #8a8a86;
+    --key: #e6e6e2; --key-fg: #1a1a1a; --accent: #2f5fa8; --danger: #b93b3b;
+    --panel: #ffffff; --shadow: 0 8px 30px rgba(0,0,0,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --fg: #ececea; --muted: #9a9a96; --line: #34343a;
+      --tile: #1d1d21; --tile-line: #4a4a52;
+      --correct: #4f9f68; --present: #c9a227; --absent: #4a4a50;
+      --key: #35353b; --key-fg: #ececea; --accent: #7aa2e0; --danger: #e06767;
+      --panel: #1d1d21; --shadow: 0 8px 30px rgba(0,0,0,.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .app { max-width: 560px; margin: 0 auto; padding: 12px 12px 24px; display: flex; flex-direction: column; gap: 14px; min-height: 100vh; }
+
+  header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .5px; }
+  header .icons { display: flex; gap: 6px; }
+  .iconbtn { background: none; border: 1px solid var(--line); border-radius: 8px; width: 36px; height: 36px; font-size: 18px; }
+  .iconbtn:hover { background: var(--key); }
+
+  .controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: none; border: 0; padding: 6px 12px; color: var(--muted); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--key); color: var(--fg); font-weight: 600; }
+  .textbtn { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+  .textbtn:hover { background: var(--key); }
+
+  .target { text-align: center; padding: 6px 0 2px; }
+  .target .label { color: var(--muted); text-transform: uppercase; letter-spacing: 2px; font-size: 12px; }
+  .target .value { font-size: 56px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .target .meta { color: var(--muted); font-size: 13px; }
+
+  .board { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row.shake { animation: shake .4s; }
+  @keyframes shake { 20%,60% { transform: translateX(-6px);} 40%,80% { transform: translateX(6px);} }
+  .tile { width: var(--tile-size, 52px); height: var(--tile-size, 52px); border: 2px solid var(--tile-line); border-radius: 6px;
+    background: var(--tile); display: grid; place-items: center; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums;
+    transition: background .2s, border-color .2s, transform .1s; }
+  .tile.filled { border-color: var(--fg); }
+  .tile.pop { transform: scale(1.08); }
+  .tile.correct { background: var(--correct); border-color: var(--correct); color: #fff; }
+  .tile.present { background: var(--present); border-color: var(--present); color: #fff; }
+  .tile.absent { background: var(--absent); border-color: var(--absent); color: #fff; }
+  .shapebadge { width: 34px; height: var(--tile-size, 52px); display: grid; place-items: center; font-size: 13px; color: var(--muted);
+    border-radius: 6px; user-select: none; }
+  .shapebadge.match { color: var(--correct); font-weight: 700; }
+  .shapebadge.nomatch { color: var(--muted); }
+  .shapebadge[title] { cursor: help; }
+
+  .keys { display: flex; flex-direction: column; gap: 6px; align-items: center; margin-top: auto; }
+  .keyrow { display: flex; gap: 6px; }
+  .key { min-width: 40px; height: 52px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--key); color: var(--key-fg);
+    font-size: 20px; font-weight: 600; }
+  .key:active { filter: brightness(.9); }
+  .key.wide { min-width: 72px; font-size: 15px; }
+  .key.correct { background: var(--correct); color: #fff; }
+  .key.present { background: var(--present); color: #fff; }
+  .key.absent { background: var(--absent); color: #fff; }
+
+  .toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 5; max-width: 90vw; text-align: center; }
+  .toast.show { opacity: 1; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; z-index: 10; padding: 16px; }
+  .modal.open { display: grid; }
+  .panel { background: var(--panel); border-radius: 12px; padding: 20px 22px; max-width: 460px; width: 100%; box-shadow: var(--shadow); position: relative; max-height: 90vh; overflow: auto; }
+  .panel h2 { margin: 0 0 10px; font-size: 20px; }
+  .panel .close { position: absolute; top: 10px; right: 10px; }
+  .panel p { margin: 8px 0; }
+  .panel .ex { display: inline-flex; gap: 4px; margin: 4px 0; }
+  .panel .ex .tile { --tile-size: 34px; font-size: 18px; }
+  .stats { display: flex; justify-content: space-around; text-align: center; margin: 10px 0; }
+  .stats b { display: block; font-size: 26px; }
+  .stats span { color: var(--muted); font-size: 12px; }
+  .dist { display: grid; grid-template-columns: 16px 1fr; gap: 4px 8px; align-items: center; margin: 8px 0; }
+  .dist .bar { background: var(--absent); color: #fff; padding: 0 6px; border-radius: 3px; min-width: 20px; font-size: 13px; text-align: right; }
+  .dist .bar.hi { background: var(--correct); }
+  .reveal { font-size: 22px; text-align: center; font-weight: 700; margin: 8px 0; font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 600; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; }
+  .muted { color: var(--muted); }
+  @media (max-width: 480px) { .tile { --tile-size: 44px; font-size: 22px; } .shapebadge { height: 44px; } .key { min-width: 32px; padding: 0 8px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Target</h1>
+    <div class="icons">
+      <button class="iconbtn" id="helpBtn" title="How to play" aria-label="How to play">?</button>
+      <button class="iconbtn" id="statsBtn" title="Statistics" aria-label="Statistics">▤</button>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="seg" id="tierSeg">
+      <button data-tier="easy">Easy</button>
+      <button data-tier="medium">Medium</button>
+      <button data-tier="hard">Hard</button>
+    </div>
+    <div class="seg" id="modeSeg">
+      <button data-mode="daily">Daily</button>
+      <button data-mode="random">Random</button>
+    </div>
+    <button class="textbtn" id="newBtn" hidden>New puzzle</button>
+  </div>
+
+  <div class="target">
+    <div class="label">Target</div>
+    <div class="value" id="targetValue">—</div>
+    <div class="meta" id="targetMeta"></div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="keys" id="keys"></div>
+
+  <footer>× and ÷ before + and −, left to right. No parentheses. A rearrangement of the hidden equation counts as a win.</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal" id="helpModal">
+  <div class="panel">
+    <button class="iconbtn close" data-close>×</button>
+    <h2>How to play</h2>
+    <p>Find the hidden equation that equals the <b>target</b>. Every guess must be a valid equation of the right length that also equals the target — a guess that doesn't hit the target isn't accepted and doesn't cost a turn.</p>
+    <p>Standard order of operations: × and ÷ before + and −, then left to right. Numbers can't start with 0.</p>
+    <p>After each guess, the tiles show how close you are:</p>
+    <div class="ex"><div class="tile correct">5</div><div class="tile">×</div><div class="tile">3</div><div class="tile">+</div><div class="tile">2</div><div class="tile">4</div></div>
+    <p class="muted">Green: this symbol is in the equation, in this exact spot.</p>
+    <div class="ex"><div class="tile">5</div><div class="tile present">×</div><div class="tile">3</div><div class="tile">+</div><div class="tile">2</div><div class="tile">4</div></div>
+    <p class="muted">Yellow: this symbol is in the equation, but somewhere else.</p>
+    <div class="ex"><div class="tile">5</div><div class="tile">×</div><div class="tile">3</div><div class="tile">+</div><div class="tile absent">2</div><div class="tile">4</div></div>
+    <p class="muted">Gray: this symbol isn't in the equation (or you've used it more times than it appears).</p>
+    <p><b>Structure hint.</b> The badge beside each guess tells you whether your equation has the same <em>shape</em> as the hidden one — the same pattern of numbers and operators, like <code>DD·o·D·o·D</code>. A ✓ means only the symbols are wrong, not their arrangement.</p>
+    <p>If your guess uses exactly the hidden equation's symbols in a different order and still equals the target, it counts as a win.</p>
+    <p class="muted">Easy: 5 slots, one operator · Medium: 6 slots, two operators · Hard: 8 slots, two or three operators. The Daily puzzle is the same for everyone on a given day; Random gives a fresh one any time.</p>
+  </div>
+</div>
+
+<div class="modal" id="statsModal">
+  <div class="panel">
+    <button class="iconbtn close" data-close>×</button>
+    <h2 id="statsTitle">Statistics</h2>
+    <div id="resultBlock"></div>
+    <div class="stats" id="statsRow"></div>
+    <div class="dist" id="dist"></div>
+    <div class="actions" id="statsActions"></div>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const E = window.TargetEngine;
+  const $ = (s) => document.querySelector(s);
+  const DISPLAY = { '*': '×', '/': '÷', '-': '−', '+': '+' };
+  const RANK = { absent: 1, present: 2, correct: 3 };
+
+  // ---------- storage helpers (everything stays in this browser) ----------
+  const store = {
+    get(k, fallback) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  const state = {
+    tier: store.get('tvo:tier', 'medium'),
+    mode: store.get('tvo:mode', 'daily'),
+    puzzle: null, guesses: [], current: '', status: 'playing', animating: false,
+  };
+
+  // ---------- puzzle lifecycle ----------
+  function gameKey() {
+    return state.mode === 'daily'
+      ? `tvo:game:daily:${state.puzzle.date}:${state.tier}`
+      : `tvo:game:random:${state.tier}`;
+  }
+  function loadPuzzle() {
+    if (state.mode === 'daily') {
+      state.puzzle = E.dailyPuzzle(E.localDateString(), state.tier);
+    } else {
+      const saved = store.get(`tvo:game:random:${state.tier}`, null);
+      if (saved && saved.seed !== undefined && saved.status === 'playing') {
+        state.puzzle = E.generatePuzzle(E.seededRng(saved.seed), state.tier); state.puzzle.seed = saved.seed;
+      } else {
+        state.puzzle = E.randomPuzzle(state.tier);
+      }
+    }
+    const saved = store.get(gameKey(), null);
+    const sameGame = saved && saved.equation === state.puzzle.equation;
+    state.guesses = sameGame ? saved.guesses : [];
+    state.status = sameGame ? saved.status : 'playing';
+    state.current = '';
+    render();
+    if (state.status !== 'playing') setTimeout(openStats, 300);
+  }
+  function newRandomPuzzle() {
+    state.puzzle = E.randomPuzzle(state.tier);
+    state.guesses = []; state.status = 'playing'; state.current = '';
+    saveGame(); render();
+  }
+  function saveGame() {
+    store.set(gameKey(), { equation: state.puzzle.equation, seed: state.puzzle.seed, guesses: state.guesses, status: state.status });
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    const p = state.puzzle;
+    $('#targetValue').textContent = p.target;
+    $('#targetMeta').textContent = state.mode === 'daily'
+      ? `Daily #${p.number} · ${E.TIERS[state.tier].label} · ${p.length} slots`
+      : `Random · ${E.TIERS[state.tier].label} · ${p.length} slots`;
+    document.querySelectorAll('#tierSeg button').forEach((b) => b.classList.toggle('on', b.dataset.tier === state.tier));
+    document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === state.mode));
+    $('#newBtn').hidden = state.mode !== 'random';
+    renderBoard(); renderKeys();
+  }
+
+  function renderBoard() {
+    const board = $('#board'); board.innerHTML = '';
+    const L = state.puzzle.length;
+    for (let r = 0; r < E.MAX_GUESSES; r++) {
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.row = r;
+      const g = state.guesses[r];
+      const text = g ? g.display : (r === state.guesses.length ? state.current : '');
+      for (let i = 0; i < L; i++) {
+        const t = document.createElement('div'); t.className = 'tile';
+        const ch = text[i];
+        if (ch) { t.textContent = DISPLAY[ch] || ch; t.classList.add('filled'); }
+        if (g) t.classList.add(g.marks[i]);
+        row.appendChild(t);
+      }
+      const badge = document.createElement('div'); badge.className = 'shapebadge';
+      if (g) {
+        badge.classList.add(g.shapeMatch ? 'match' : 'nomatch');
+        badge.textContent = g.shapeMatch ? '✓' : '✗';
+        badge.title = g.shapeMatch ? 'Same shape as the hidden equation' : 'Different shape from the hidden equation';
+      }
+      row.appendChild(badge);
+      board.appendChild(row);
+    }
+  }
+
+  function keyStates() {
+    const best = {};
+    for (const g of state.guesses) {
+      g.guess.split('').forEach((ch, i) => {
+        const m = g.marks[i];
+        if (!best[ch] || RANK[m] > RANK[best[ch]]) best[ch] = m;
+      });
+    }
+    return best;
+  }
+  function renderKeys() {
+    const keys = $('#keys'); keys.innerHTML = '';
+    const best = keyStates();
+    const rows = [['1','2','3','4','5','6','7','8','9','0'], ['Enter','+','-','*','/','Back']];
+    for (const r of rows) {
+      const kr = document.createElement('div'); kr.className = 'keyrow';
+      for (const k of r) {
+        const b = document.createElement('button'); b.className = 'key'; b.dataset.key = k;
+        if (k === 'Enter' || k === 'Back') { b.classList.add('wide'); b.textContent = k === 'Back' ? '⌫' : 'Enter'; }
+        else { b.textContent = DISPLAY[k] || k; if (best[k]) b.classList.add(best[k]); }
+        b.addEventListener('click', () => handleKey(k));
+        kr.appendChild(b);
+      }
+      keys.appendChild(kr);
+    }
+  }
+
+  let toastTimer;
+  function toast(msg, ms = 1800) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  }
+  function shakeRow() {
+    const row = document.querySelector(`.row[data-row="${state.guesses.length}"]`);
+    if (!row) return; row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake');
+  }
+
+  // ---------- input ----------
+  function handleKey(k) {
+    if (state.status !== 'playing' || state.animating) return;
+    const L = state.puzzle.length;
+    if (k === 'Enter') return submit();
+    if (k === 'Back') { state.current = state.current.slice(0, -1); return renderBoard(); }
+    if (state.current.length >= L) return;
+    state.current += k; renderBoard();
+    const tile = document.querySelector(`.row[data-row="${state.guesses.length}"] .tile:nth-child(${state.current.length})`);
+    if (tile) { tile.classList.add('pop'); setTimeout(() => tile.classList.remove('pop'), 100); }
+  }
+
+  function submit() {
+    const p = state.puzzle;
+    const guess = state.current;
+    const v = E.validateGuess(guess, p.target, p.length);
+    if (!v.ok) { toast(v.error); shakeRow(); return; }
+
+    const win = E.checkWin(guess, p.equation);
+    const shown = win.win ? p.equation : guess;          // a commutative win is shown in canonical form
+    const marks = E.score(shown, p.equation);
+    const entry = { guess, display: shown, marks, shapeMatch: E.shape(guess) === p.shape };
+    state.guesses.push(entry); state.current = '';
+    if (win.win) state.status = 'won';
+    else if (state.guesses.length >= E.MAX_GUESSES) state.status = 'lost';
+    saveGame();
+
+    state.animating = true;
+    renderBoard();
+    const tiles = document.querySelectorAll(`.row[data-row="${state.guesses.length - 1}"] .tile`);
+    tiles.forEach((t) => { t.classList.remove('correct', 'present', 'absent'); });
+    tiles.forEach((t, i) => setTimeout(() => t.classList.add(marks[i]), i * 90));
+    setTimeout(() => {
+      state.animating = false; renderKeys();
+      if (win.win && !win.exact) toast(`${pretty(guess)} is equivalent — shown as ${pretty(p.equation)}`, 3500);
+      if (state.status !== 'playing') { recordResult(); setTimeout(openStats, win.win && !win.exact ? 1800 : 600); }
+    }, tiles.length * 90 + 250);
+  }
+
+  const pretty = (s) => s.split('').map((c) => DISPLAY[c] || c).join('');
+
+  // ---------- stats ----------
+  function statsKey() { return `tvo:stats:${state.tier}`; }
+  function recordResult() {
+    const s = store.get(statsKey(), { played: 0, won: 0, streak: 0, maxStreak: 0, dist: [0,0,0,0,0,0] });
+    s.played++;
+    if (state.status === 'won') { s.won++; s.streak++; s.maxStreak = Math.max(s.maxStreak, s.streak); s.dist[state.guesses.length - 1]++; }
+    else s.streak = 0;
+    store.set(statsKey(), s);
+  }
+  function shareText() {
+    const p = state.puzzle;
+    const head = state.mode === 'daily' ? `Target #${p.number} (${E.TIERS[state.tier].label})` : `Target ${p.target} (${E.TIERS[state.tier].label})`;
+    const n = state.status === 'won' ? state.guesses.length : 'X';
+    const rows = state.guesses.map((g) => g.marks.map((m) => ({ correct: '🟩', present: '🟨', absent: '⬜' })[m]).join('') + (g.shapeMatch ? ' ✓' : ' ✗'));
+    return `${head} ${n}/${E.MAX_GUESSES}\n${rows.join('\n')}`;
+  }
+  function openStats() {
+    const s = store.get(statsKey(), { played: 0, won: 0, streak: 0, maxStreak: 0, dist: [0,0,0,0,0,0] });
+    const p = state.puzzle;
+    $('#statsTitle').textContent = state.status === 'won' ? 'Solved!' : state.status === 'lost' ? 'Out of guesses' : `Statistics · ${E.TIERS[state.tier].label}`;
+    $('#resultBlock').innerHTML = state.status === 'playing' ? '' :
+      `<div class="reveal">${pretty(p.equation)} = ${p.target}</div>` +
+      (state.status === 'lost' ? `<p class="muted" style="text-align:center">The hidden equation had shape ${p.shape.split('').join('·')}.</p>` : '');
+    $('#statsRow').innerHTML = [['Played', s.played], ['Win %', s.played ? Math.round(100 * s.won / s.played) : 0], ['Streak', s.streak], ['Best', s.maxStreak]]
+      .map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
+    const max = Math.max(1, ...s.dist);
+    $('#dist').innerHTML = s.dist.map((c, i) => {
+      const hi = state.status === 'won' && state.guesses.length === i + 1;
+      return `<div>${i + 1}</div><div class="bar${hi ? ' hi' : ''}" style="width:${Math.max(8, 100 * c / max)}%">${c}</div>`;
+    }).join('');
+    const acts = $('#statsActions'); acts.innerHTML = '';
+    if (state.status !== 'playing') {
+      const share = document.createElement('button'); share.className = 'primary'; share.textContent = 'Copy result';
+      share.onclick = async () => { try { await navigator.clipboard.writeText(shareText()); toast('Copied to clipboard'); } catch { toast(shareText(), 5000); } };
+      acts.appendChild(share);
+      if (state.mode === 'random') {
+        const again = document.createElement('button'); again.className = 'textbtn'; again.textContent = 'New puzzle';
+        again.onclick = () => { closeModals(); newRandomPuzzle(); };
+        acts.appendChild(again);
+      }
+    }
+    $('#statsModal').classList.add('open');
+  }
+  function closeModals() { document.querySelectorAll('.modal').forEach((m) => m.classList.remove('open')); }
+
+  // ---------- wiring ----------
+  $('#helpBtn').onclick = () => $('#helpModal').classList.add('open');
+  $('#statsBtn').onclick = openStats;
+  $('#newBtn').onclick = newRandomPuzzle;
+  document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = closeModals));
+  document.querySelectorAll('.modal').forEach((m) => m.addEventListener('click', (e) => { if (e.target === m) closeModals(); }));
+  document.querySelectorAll('#tierSeg button').forEach((b) => (b.onclick = () => { state.tier = b.dataset.tier; store.set('tvo:tier', state.tier); loadPuzzle(); }));
+  document.querySelectorAll('#modeSeg button').forEach((b) => (b.onclick = () => { state.mode = b.dataset.mode; store.set('tvo:mode', state.mode); loadPuzzle(); }));
+
+  const KEYMAP = { 'x': '*', 'X': '*', '×': '*', '÷': '/', ':': '/', '−': '-', 'Backspace': 'Back', 'Enter': 'Enter' };
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.querySelector('.modal.open')) { if (e.key === 'Escape' || e.key === 'Enter') closeModals(); return; }
+    let k = KEYMAP[e.key] || e.key;
+    if (/^[0-9]$/.test(k) || '+-*/'.includes(k) && k.length === 1 || k === 'Back' || k === 'Enter') { e.preventDefault(); handleKey(k); }
+  });
+
+  if (!store.get('tvo:seenHelp', false)) { $('#helpModal').classList.add('open'); store.set('tvo:seenHelp', true); }
+  loadPuzzle();
+})();
+</script>
+</body>
+</html>
